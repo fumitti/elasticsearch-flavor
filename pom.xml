@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.elasticsearch.plugin.flavor</groupId>
     <artifactId>elasticsearch-flavor</artifactId>
-    <version>0.0.4</version>
+    <version>0.0.5</version>
     <packaging>jar</packaging>
     <name>Elasticsearch Recommendation Plugin</name>
     <description>Realtime recommendation rest api</description>
@@ -13,7 +13,7 @@
         <url>git@github.com:f-kubotar/elasticsearch-taste.git</url>
     </scm>
     <properties>
-        <elasticsearch.version>2.0.0</elasticsearch.version>
+        <elasticsearch.version>2.1.0</elasticsearch.version>
         <elasticsearch.plugin.classname>org.elasticsearch.plugin.flavor.FlavorPlugin</elasticsearch.plugin.classname>
         <lucene.version>4.10.2</lucene.version>
         <mahout.version>0.9</mahout.version>
