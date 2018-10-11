@@ -4,7 +4,7 @@ import java.util.Map;
 import java.security.InvalidParameterException;
 
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 
 import org.apache.mahout.cf.taste.common.TasteException;
@@ -17,7 +17,7 @@ import org.elasticsearch.plugin.flavor.DataModelFactory;
 import org.elasticsearch.plugin.flavor.ElasticsearchPreloadDataModel;
 
 public class ElasticsearchPreloadDataModelFactory implements DataModelFactory {
-    private ESLogger logger = Loggers.getLogger(ElasticsearchPreloadDataModelFactory.class);
+    private Logger logger = Loggers.getLogger(ElasticsearchPreloadDataModelFactory.class);
     private Client client;
     private String index = "preference";
     private String type = "preference";

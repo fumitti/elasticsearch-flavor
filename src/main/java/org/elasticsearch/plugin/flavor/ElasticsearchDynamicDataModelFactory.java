@@ -3,7 +3,7 @@ package org.elasticsearch.plugin.flavor;
 
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.unit.TimeValue;
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHitField;
@@ -23,7 +23,7 @@ import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.elasticsearch.plugin.flavor.DataModelFactory;
 
 public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
-    private ESLogger logger = Loggers.getLogger(ElasticsearchDynamicDataModelFactory.class);
+    private Logger logger = Loggers.getLogger(ElasticsearchDynamicDataModelFactory.class);
     private Client client;
 
     private int scrollSize = 2000;

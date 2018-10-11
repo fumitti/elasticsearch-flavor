@@ -12,7 +12,7 @@ import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.json.JsonXContent;
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.rest.BaseRestHandler;
@@ -47,7 +47,7 @@ import org.elasticsearch.plugin.flavor.RecommenderBuilder;
 
 public class FlavorRestAction extends BaseRestHandler {
     private DataModelFactory dataModelFactory;
-    private ESLogger logger = Loggers.getLogger(FlavorRestAction.class);
+    private Logger logger = Loggers.getLogger(FlavorRestAction.class);
 
     @Inject
     public FlavorRestAction(final Settings settings,

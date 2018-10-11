@@ -5,7 +5,7 @@ import java.util.Collection;
 
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.unit.TimeValue;
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHitField;
@@ -30,7 +30,7 @@ import org.apache.mahout.cf.taste.model.Preference;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
 
 public class ElasticsearchPreloadDataModel extends AbstractDataModel {
-    private ESLogger logger = Loggers.getLogger(ElasticsearchPreloadDataModel.class);
+    private Logger logger = Loggers.getLogger(ElasticsearchPreloadDataModel.class);
     private Client client;
     private String preferenceIndex;
     private String preferenceType;
