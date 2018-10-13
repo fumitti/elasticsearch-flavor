@@ -1,3 +1,7 @@
+task wrapper(type: Wrapper) {
+    gradleVersion = '4.9'
+}
+
 buildscript {
     repositories {
         mavenCentral()
@@ -8,11 +12,11 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath "org.elasticsearch.gradle:build-tools:6.2.4"
+        classpath "org.elasticsearch.gradle:build-tools:6.4.1"
     }
 }
 group = 'org.elasticsearch.plugin'
-version = '6.2.4'
+version = '6.4.1'
 
 apply plugin: 'java'
 apply plugin: 'idea'
@@ -29,11 +33,11 @@ esplugin {
     classname 'org.elasticsearch.plugin.flavor.FlavorPlugin'
 }
 dependencies {
-    compile 'org.elasticsearch:elasticsearch:6.2.4'
+    compile 'org.elasticsearch:elasticsearch:6.4.1'
     compile "org.apache.mahout:mahout-core:0.9"
     compile "com.google.code.gson:gson:2.3.1"
-    testCompile 'org.elasticsearch.test:framework:6.2.4'
-    testCompile 'org.codelibs:elasticsearch-cluster-runner:6.4.2.0'
+    testCompile 'org.elasticsearch.test:framework:6.4.1'
+    testCompile 'org.codelibs:elasticsearch-cluster-runner:6.4.1.0'
     testCompile 'args4j:args4j:2.33'
 }
 
