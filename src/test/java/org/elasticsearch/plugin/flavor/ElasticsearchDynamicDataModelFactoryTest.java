@@ -2,6 +2,7 @@ package org.elasticsearch.plugin.flavor;
 
 import java.util.logging.Logger;
 
+import org.elasticsearch.common.settings.Settings;
 import org.junit.Before;
 import org.junit.After;
 import org.junit.Test;
@@ -38,7 +39,7 @@ public class ElasticsearchDynamicDataModelFactoryTest {
 
         runner.ensureYellow();
 
-        runner.createIndex(index, null);
+        runner.createIndex(index, (Settings)null);
         // user 1
         runner.insert(index, type, "1:101",
                       "{"

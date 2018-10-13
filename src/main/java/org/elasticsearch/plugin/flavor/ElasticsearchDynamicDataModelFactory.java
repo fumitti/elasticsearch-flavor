@@ -2,11 +2,11 @@ package org.elasticsearch.plugin.flavor;
 
 
 import org.elasticsearch.client.Client;
+import org.elasticsearch.common.document.DocumentField;
 import org.elasticsearch.common.unit.TimeValue;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.SearchHitField;
 import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.index.query.QueryBuilders;
@@ -21,6 +21,7 @@ import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
 
 import org.elasticsearch.plugin.flavor.DataModelFactory;
+import org.elasticsearch.search.sort.SortOrder;
 
 public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
     private Logger logger = Loggers.getLogger(ElasticsearchDynamicDataModelFactory.class);
@@ -39,10 +40,10 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
         SearchResponse userIdsResponse = client
             .prepareSearch(index)
             .setTypes(type)
-            .setSearchType(SearchType.SCAN)
+            .addSort("_doc", SortOrder.ASC)
             .setScroll(new TimeValue(keepAlive))
             .setPostFilter(QueryBuilders.termQuery("item_id", itemId))
-            .addFields("user_id")
+            .setFetchSource(new String[]{"user_id"},null)
             .setSize(scrollSize)
             .execute()
             .actionGet();
@@ -73,10 +74,10 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
         SearchResponse itemIdsResponse = client
             .prepareSearch(index)
             .setTypes(type)
-            .setSearchType(SearchType.SCAN)
+            .addSort("_doc", SortOrder.ASC)
             .setScroll(new TimeValue(keepAlive))
             .setPostFilter(QueryBuilders.termQuery("user_id", targetUserId))
-            .addFields("item_id")
+            .setFetchSource(new String[]{"item_id"},null)
             .setSize(scrollSize)
             .execute()
             .actionGet();
@@ -105,10 +106,10 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
         SearchResponse userIdsResponse = client
             .prepareSearch(index)
             .setTypes(type)
-            .setSearchType(SearchType.SCAN)
+            .addSort("_doc", SortOrder.ASC)
             .setScroll(new TimeValue(keepAlive))
-            .setPostFilter(QueryBuilders.termsQuery("item_id", (long[])itemIds.toArray()))
-            .addFields("user_id")
+            .setPostFilter(QueryBuilders.termsQuery("item_id", itemIds.toArray()))
+            .setFetchSource(new String[]{"user_id"},null)
             .setSize(scrollSize)
             .execute()
             .actionGet();
@@ -139,9 +140,9 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
         SearchResponse scroll = client
             .prepareSearch(index)
             .setTypes(type)
-            .setSearchType(SearchType.SCAN)
-            .setPostFilter(QueryBuilders.termsQuery("user_id", (long[])userIds.toArray()))
-            .addFields("user_id", "item_id", "value")
+                .addSort("_doc", SortOrder.ASC)
+            .setPostFilter(QueryBuilders.termsQuery("user_id", userIds.toArray()))
+            .setFetchSource(new String[]{"user_id", "item_id", "value"},null)
             .setSize(scrollSize)
             .setScroll(new TimeValue(keepAlive))
             .execute()
@@ -187,11 +188,11 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
                 break;
             }
         }
-        return new GenericDataModel((FastByIDMap<PreferenceArray>)users);
+        return new GenericDataModel(users);
     }
 
     private long getLongValue(final SearchHit hit, final String field) {
-        final SearchHitField result = hit.field(field);
+        final DocumentField result = hit.field(field);
         if (result == null) {
             return 0;
         }
@@ -203,7 +204,7 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
     }
 
     private float getFloatValue(final SearchHit hit, final String field) {
-        final SearchHitField result = hit.field(field);
+        final DocumentField result = hit.field(field);
         if (result == null) {
             return 0;
         }

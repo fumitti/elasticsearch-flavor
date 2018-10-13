@@ -2,6 +2,7 @@ package org.elasticsearch.plugin.flavor;
 
 import java.util.logging.Logger;
 
+import org.elasticsearch.common.settings.Settings;
 import org.junit.Before;
 import org.junit.After;
 import org.junit.Test;
@@ -38,7 +39,7 @@ public class ElasticsearchPreloadDataModelTest {
         // クラスタ状態がYellowになるのを待つ
         runner.ensureYellow();
 
-        runner.createIndex(index, null);
+        runner.createIndex(index, (Settings)null);
         for (int i = 1; i <= 1000; i++) {
             final String source = "{\"user_id\": " + i + ", \"item_id\":" + i % 100 + ", \"value\":" + (i % 10 / 5) + "}";
             

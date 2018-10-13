@@ -1,33 +1,26 @@
 package org.elasticsearch.plugin.flavor;
 
-import java.util.ArrayList;
-import java.util.Collection;
-
-import org.elasticsearch.client.Client;
-import org.elasticsearch.common.unit.TimeValue;
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.common.logging.Loggers;
-import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.SearchHitField;
-import org.elasticsearch.search.SearchHits;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.action.search.SearchType;
-import org.elasticsearch.action.search.SearchResponse;
-
 import org.apache.mahout.cf.taste.common.Refreshable;
 import org.apache.mahout.cf.taste.common.TasteException;
-import org.apache.mahout.cf.taste.impl.model.AbstractDataModel;
-import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
 import org.apache.mahout.cf.taste.impl.common.FastIDSet;
 import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.model.AbstractDataModel;
 import org.apache.mahout.cf.taste.impl.model.GenericDataModel;
-import org.apache.mahout.cf.taste.impl.model.GenericPreference;
 import org.apache.mahout.cf.taste.impl.model.GenericUserPreferenceArray;
-import org.apache.mahout.cf.taste.model.DataModel;
-import org.apache.mahout.cf.taste.model.Preference;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.search.SearchType;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.common.document.DocumentField;
+import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.sort.SortOrder;
+
+import java.util.Collection;
 
 public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     private Logger logger = Loggers.getLogger(ElasticsearchPreloadDataModel.class);
@@ -52,9 +45,9 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
         SearchResponse scroll = client
             .prepareSearch(preferenceIndex)
             .setTypes(preferenceType)
-            .setSearchType(SearchType.SCAN)
+            .addSort("_doc", SortOrder.ASC)
+            .setFetchSource(new String[]{"user_id", "item_id", "value"},null)
             .setQuery(QueryBuilders.matchAllQuery())
-            .addFields("user_id", "item_id", "value")
             .setSize(scrollSize)
             .setScroll(new TimeValue(keepAlive))
             .execute()
@@ -99,7 +92,7 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
             }
         }
 
-        this.delegate = new GenericDataModel((FastByIDMap<PreferenceArray>)users);
+        this.delegate = new GenericDataModel(users);
         // LongPrimitiveIterator iter = delegate.getUserIDs();
         // while (iter.hasNext()) {
         //     long userId = iter.nextLong();
@@ -149,7 +142,7 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     private long getLongValue(final SearchHit hit, final String field) throws TasteException {
-        final SearchHitField result = hit.field(field);
+        final DocumentField result = hit.field(field);
         if (result == null) {
             throw new TasteException(field + " is not found.");
         }
@@ -161,7 +154,7 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     private float getFloatValue(final SearchHit hit, final String field) throws TasteException {
-        final SearchHitField result = hit.field(field);
+        final DocumentField result = hit.field(field);
         if (result == null) {
             throw new TasteException(field + " is not found.");
         }
@@ -230,7 +223,7 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     /**
-     * Note that this method only updates the in-memory preference data that this {@link FileDataModel}
+     * Note that this method only updates the in-memory preference data that this
      * maintains; it does not modify any data on disk. Therefore any updates from this method are only
      * temporary, and lost when data is reloaded from a file. This method should also be considered relatively
      * slow.
