@@ -12,7 +12,7 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath "org.elasticsearch.gradle:build-tools:6.4.1"
+        classpath "org.elasticsearch.gradle:build-tools:6.0.0"
     }
 }
 group = 'org.elasticsearch.plugin'
@@ -33,11 +33,17 @@ esplugin {
     classname 'org.elasticsearch.plugin.flavor.FlavorPlugin'
 }
 dependencies {
-    compile 'org.elasticsearch:elasticsearch:6.4.1'
+    compile 'org.elasticsearch:elasticsearch:6.0.0'
+    compile group: 'org.apache.mahout', name: 'mahout', version: '0.9', ext: 'pom'
     compile "org.apache.mahout:mahout-core:0.9"
     compile "com.google.code.gson:gson:2.3.1"
-    testCompile 'org.elasticsearch.test:framework:6.4.1'
-    testCompile 'org.codelibs:elasticsearch-cluster-runner:6.4.1.0'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.5'
+    compile group: 'org.apache.mahout', name: 'mahout-math', version: '0.9'
+    compile group: 'com.google.guava', name: 'guava', version: '16.0'
+    compile group: 'org.apache.commons', name: 'commons-math3', version: '3.2'
+    testCompile group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.5'
+    testCompile 'org.elasticsearch.test:framework:6.0.0'
+    testCompile 'org.codelibs:elasticsearch-cluster-runner:6.0.0.0'
     testCompile 'args4j:args4j:2.33'
 }
 

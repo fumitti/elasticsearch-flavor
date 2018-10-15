@@ -2,7 +2,9 @@ package org.elasticsearch.plugin.flavor;
 
 import java.util.logging.Logger;
 
+import com.carrotsearch.randomizedtesting.RandomizedRunner;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.test.ESTestCase;
 import org.junit.Before;
 import org.junit.After;
 import org.junit.Test;
@@ -13,12 +15,14 @@ import org.codelibs.elasticsearch.runner.ElasticsearchClusterRunner;
 
 import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
+import org.junit.runner.RunWith;
 
 
 import static org.codelibs.elasticsearch.runner.ElasticsearchClusterRunner.newConfigs;
 import static org.junit.Assert.*;
 
-public class ElasticsearchDynamicDataModelFactoryTest {
+@RunWith(RandomizedRunner.class)
+public class ElasticsearchDynamicDataModelFactoryTests extends ESTestCase {
     private final static Logger LOGGER = Logger.getLogger(ElasticsearchDynamicDataModelFactory.class.getName());
     
     private ElasticsearchClusterRunner runner;
