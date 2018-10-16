@@ -10,6 +10,7 @@ import org.elasticsearch.common.document.DocumentField;
 import org.elasticsearch.common.unit.TimeValue;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.rest.BytesRestResponse;
 import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.rest.RestResponse;
@@ -36,27 +37,23 @@ import org.elasticsearch.search.sort.SortOrder;
 
 public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
     private final FlavorRestAction action;
-    private final RestRequest request;
-    private final long startTime;
-    private final RestChannel ch;
     private Logger logger = Loggers.getLogger(ElasticsearchDynamicDataModelFactory.class);
     private final Client client;
 
     private int scrollSize = 2000;
     private long keepAlive = 10000;
 
-    public ElasticsearchDynamicDataModelFactory(final Client client, final RestChannel ch, final FlavorRestAction action, final RestRequest request, final long time) {
+    public ElasticsearchDynamicDataModelFactory(final Client client, final FlavorRestAction action) {
         this.client = client;
-        this.ch = ch;
         this.action = action;
-        this.request = request;
-        this.startTime = time;
     }
 
     public void createItemBasedDataModel(final String index,
                                          final String type,
                                          final long itemId,
-                                         final String operation) throws TasteException {
+                                         final RestChannel ch,
+                                         final long startTime,
+                                         final RestRequest request) throws TasteException {
         client
                 .prepareSearch(index)
                 .setTypes(type)
@@ -79,19 +76,43 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
                                 .setFetchSource(new String[]{"user_id", "item_id", "value"}, null)
                                 .setSize(scrollSize)
                                 .setScroll(new TimeValue(keepAlive))
-                                .execute(new RestActionListener<SearchResponse>(ch) {
-                                    public void processResponse(SearchResponse scroll) throws Exception {
+                                .execute(new ActionListener<SearchResponse>() {
+                                    @Override
+                                    public void onResponse(SearchResponse scroll) {
 
                                         final long total = scroll.getHits().getTotalHits();
                                         FastByIDMap<PreferenceArray> users = new FastByIDMap<PreferenceArray>((int) total);
                                         loop(scroll, users);
+                                        final String operation = request.param("operation");
                                         switch (operation) {
                                             case "preload":
                                                 action.renderStatus(channel, new GenericDataModel(users));
                                                 break;
                                             case "similar_items":
-                                                action.similar_items(new GenericDataModel(users), request, ch, startTime);
+                                                try {
+                                                    action.similar_items(new GenericDataModel(users), request, ch, startTime);
+                                                } catch (TasteException e) {
+                                                    try {
+                                                        channel.sendResponse(new BytesRestResponse(channel, e));
+                                                    } catch (Exception inner) {
+                                                        inner.addSuppressed(e);
+                                                        logger.error("failed to send failure response", inner);
+                                                    }
+                                                }
                                                 break;
+                                            default:
+                                                action.renderNotFound(ch, "Invalid operation: " + operation);
+                                                break;
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onFailure(Exception e) {
+                                        try {
+                                            channel.sendResponse(new BytesRestResponse(channel, e));
+                                        } catch (Exception inner) {
+                                            inner.addSuppressed(e);
+                                            logger.error("failed to send failure response", inner);
                                         }
                                     }
                                 });
@@ -103,7 +124,9 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
     public void createUserBasedDataModel(final String index,
                                          final String type,
                                          final long targetUserId,
-                                         final String operation) throws TasteException {
+                                         final RestChannel ch,
+                                         final long startTime,
+                                         final RestRequest request) throws TasteException {
         client
                 .prepareSearch(index)
                 .setTypes(type)
@@ -160,19 +183,33 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
                                 .setFetchSource(new String[]{"user_id", "item_id", "value"}, null)
                                 .setSize(scrollSize)
                                 .setScroll(new TimeValue(keepAlive))
-                                .execute(new RestActionListener<SearchResponse>(ch) {
-                                    public void processResponse(SearchResponse scroll) throws Exception {
+                                .execute(new ActionListener<SearchResponse>() {
+                                    @Override
+                                    public void onResponse(SearchResponse scroll) {
 
                                         final long total = scroll.getHits().getTotalHits();
                                         FastByIDMap<PreferenceArray> users = new FastByIDMap<PreferenceArray>((int) total);
                                         loop(scroll, users);
+                                        final String operation = request.param("operation");
                                         switch (operation) {
                                             case "similar_users":
                                             case "user_based_recommend":
                                             case "item_based_recommend":
-                                                action.similar_items(new GenericDataModel(users), request, ch, startTime);
+                                                try {
+                                                    action.similar_items(new GenericDataModel(users), request, ch, startTime);
+                                                } catch (TasteException e) {
+                                                    e.printStackTrace();
+                                                }
+                                                break;
+                                            default:
+                                                action.renderNotFound(ch, "Invalid operation: " + operation);
                                                 break;
                                         }
+                                    }
+
+                                    @Override
+                                    public void onFailure(Exception e) {
+                                        e.printStackTrace();
                                     }
                                 });
                     }
@@ -239,11 +276,13 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
     }
 
     private long getLongValue(final SearchHit hit, final String field) {
-        final DocumentField result = hit.field(field);
+        final Object result = hit.getSourceAsMap().get(field);
         if (result == null) {
             return 0;
         }
-        final Number longValue = result.getValue();
+        if (! (result instanceof Number))
+            return 0;
+        final Number longValue = (Number) result;
         if (longValue == null) {
             return 0;
         }
@@ -251,11 +290,13 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
     }
 
     private float getFloatValue(final SearchHit hit, final String field) {
-        final DocumentField result = hit.field(field);
+        final Object result = hit.getSourceAsMap().get(field);
         if (result == null) {
             return 0;
         }
-        final Number floatValue = result.getValue();
+        if (! (result instanceof Number))
+            return 0;
+        final Number floatValue = (Number) result;
         if (floatValue == null) {
             return 0;
         }

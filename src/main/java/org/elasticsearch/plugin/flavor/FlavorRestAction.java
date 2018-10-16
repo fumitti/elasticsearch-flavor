@@ -47,9 +47,9 @@ public class FlavorRestAction extends BaseRestHandler {
                         JsonObject json = new Gson().fromJson(jsonString, JsonObject.class);
                         final long startTime = System.currentTimeMillis();
 
-                        ElasticsearchPreloadDataModelFactory factory = new ElasticsearchPreloadDataModelFactory(client, json,channel,this,request,startTime);
+                        ElasticsearchPreloadDataModelFactory factory = new ElasticsearchPreloadDataModelFactory(client, json,this);
                         this.dataModelFactory = factory;
-                        factory.createItemBasedDataModel(null, null, 0,"preload");
+                        factory.createItemBasedDataModel(null, null, 0,channel,startTime,request);
 
                     } catch (final Exception e) {
                         handleErrorRequest(channel, e);
@@ -73,20 +73,22 @@ public class FlavorRestAction extends BaseRestHandler {
                                 .neighborhoodThreshold((double) request.paramAsFloat("neighborhoodThreshold", 0.1F));
 
                         if(dataModelFactory == null){
-                            ElasticsearchDynamicDataModelFactory factory = new ElasticsearchDynamicDataModelFactory(client,channel,this,request,startTime);
+                            ElasticsearchDynamicDataModelFactory factory = new ElasticsearchDynamicDataModelFactory(client,this);
                             this.dataModelFactory = factory;
                         }
 
-                        if (operation.equals("similar_items")) {
-                            dataModelFactory.createItemBasedDataModel(index, type, id,operation);
-                        } else if (operation.equals("similar_users")) {
-                            dataModelFactory.createUserBasedDataModel(index, type, id,operation);
-                        } else if (operation.equals("user_based_recommend")) {
-                            dataModelFactory.createUserBasedDataModel(index, type, id,operation);
-                        } else if (operation.equals("item_based_recommend")) {
-                            dataModelFactory.createUserBasedDataModel(index, type, id,operation);
-                        } else {
-                            renderNotFound(channel, "Invalid operation: " + operation);
+                        switch (operation) {
+                            case "similar_items":
+                                dataModelFactory.createItemBasedDataModel(index, type, id, channel, startTime, request);
+                                break;
+                            case "similar_users":
+                            case "user_based_recommend":
+                            case "item_based_recommend":
+                                dataModelFactory.createUserBasedDataModel(index, type, id, channel, startTime, request);
+                                break;
+                            default:
+                                renderNotFound(channel, "Invalid operation: " + operation);
+                                break;
                         }
 
                     } catch (final NoSuchItemException e) {
@@ -122,6 +124,7 @@ public class FlavorRestAction extends BaseRestHandler {
             }
             builder
                 .endArray()
+                .endObject()
                 .endObject();
             channel.sendResponse(new BytesRestResponse(OK, builder));
 
@@ -157,7 +160,7 @@ public class FlavorRestAction extends BaseRestHandler {
         }
     }
 
-    private void renderNotFound(final RestChannel channel, final String message) {
+    protected void renderNotFound(final RestChannel channel, final String message) {
         try {
             // 404
             XContentBuilder builder = JsonXContent.contentBuilder();

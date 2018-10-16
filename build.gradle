@@ -16,7 +16,7 @@ buildscript {
     }
 }
 group = 'org.elasticsearch.plugin'
-version = '0.0.10'
+version = '0.0.11'
 
 apply plugin: 'java'
 apply plugin: 'idea'

@@ -16,6 +16,7 @@ import com.google.gson.JsonElement;
 
 import org.elasticsearch.plugin.flavor.DataModelFactory;
 import org.elasticsearch.plugin.flavor.ElasticsearchPreloadDataModel;
+import org.elasticsearch.rest.BytesRestResponse;
 import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestRequest;
 
@@ -26,16 +27,10 @@ public class ElasticsearchPreloadDataModelFactory implements DataModelFactory {
     private String type = "preference";
     private DataModel dataModel;
     private final FlavorRestAction action;
-    private final RestRequest request;
-    private final long startTime;
-    private final RestChannel ch;
 
-    public ElasticsearchPreloadDataModelFactory(final Client client, final JsonObject settings, final RestChannel ch, final FlavorRestAction action, final RestRequest request, final long time) {
+    public ElasticsearchPreloadDataModelFactory(final Client client, final JsonObject settings, final FlavorRestAction action) {
         this.client = client;
-        this.ch = ch;
         this.action = action;
-        this.request = request;
-        this.startTime = time;
 
         final JsonElement preferenceSettingsElement = settings.getAsJsonObject("preference");
         if (preferenceSettingsElement.isJsonNull()) {
@@ -64,27 +59,55 @@ public class ElasticsearchPreloadDataModelFactory implements DataModelFactory {
     }
 
     public void createItemBasedDataModel(final String _index,
-                                              final String _type,
-                                              final long _itemId,
-                                              final String operation) throws TasteException {
+                                         final String _type,
+                                         final long _itemId,
+                                         final RestChannel ch,
+                                         final long startTime,
+                                         final RestRequest request) throws TasteException {
         if (dataModel == null) {
             ElasticsearchPreloadDataModel preloadDataModel = new ElasticsearchPreloadDataModel(client, index, type);
             preloadDataModel.reload();
             this.dataModel = preloadDataModel;
         }
 
-        action.renderStatus(ch, dataModel);
+        final String operation = request.param("operation");
+        if (operation ==null)
+            action.renderStatus(ch, dataModel);
+        else
+        switch (operation) {
+            case "preload":
+                action.renderStatus(ch, dataModel);
+                break;
+            case "similar_items":
+                action.similar_items(dataModel, request, ch, startTime);
+                break;
+            default:
+                action.renderNotFound(ch, "Invalid operation: " + operation);
+                break;
+        }
     }
 
     public void createUserBasedDataModel(final String _index,
-                                              final String _type,
-                                              final long _userId,
-                                              final String operation) throws TasteException {
+                                         final String _type,
+                                         final long _userId,
+                                         final RestChannel ch,
+                                         final long startTime,
+                                         final RestRequest request) throws TasteException {
         if (dataModel == null) {
             ElasticsearchPreloadDataModel preloadDataModel = new ElasticsearchPreloadDataModel(client, index, type);
             preloadDataModel.reload();
             this.dataModel = preloadDataModel;
         }
-        action.renderStatus(ch, dataModel);
+        final String operation = request.param("operation");
+        switch (operation) {
+            case "similar_users":
+            case "user_based_recommend":
+            case "item_based_recommend":
+                action.similar_items(dataModel, request, ch, startTime);
+                break;
+            default:
+                action.renderNotFound(ch, "Invalid operation: " + operation);
+                break;
+        }
     }
 }

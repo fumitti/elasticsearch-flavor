@@ -158,11 +158,13 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     private long getLongValue(final SearchHit hit, final String field) throws TasteException {
-        final DocumentField result = hit.field(field);
+        final Object result = hit.getSourceAsMap().get(field);
         if (result == null) {
             throw new TasteException(field + " is not found.");
         }
-        final Number longValue = result.getValue();
+        if (! (result instanceof Number))
+            throw new TasteException(field + " is not Number.");
+        final Number longValue = (Number) result;
         if (longValue == null) {
             throw new TasteException("The result of " + field + " is null.");
         }
@@ -170,11 +172,13 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     private float getFloatValue(final SearchHit hit, final String field) throws TasteException {
-        final DocumentField result = hit.field(field);
+        final Object result = hit.getSourceAsMap().get(field);
         if (result == null) {
             throw new TasteException(field + " is not found.");
         }
-        final Number floatValue = result.getValue();
+        if (! (result instanceof Number))
+            throw new TasteException(field + " is not Number.");
+        final Number floatValue = (Number) result;
         if (floatValue == null) {
             throw new TasteException("The result of " + field + " is null.");
         }
