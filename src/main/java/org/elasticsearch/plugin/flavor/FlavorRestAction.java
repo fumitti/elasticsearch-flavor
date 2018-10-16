@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.NoSuchItemException;
+import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
@@ -32,9 +33,7 @@ public class FlavorRestAction extends BaseRestHandler {
         super(settings);
         controller.registerHandler(POST, "/_flavor/preload", this);
         controller.registerHandler(GET,  "/{index}/{type}/_flavor/{operation}/{id}", this);
-        controller.registerHandler(GET,  "/{index}/{type}/_flavor", this);
         controller.registerHandler(GET,  "/_flavor/{operation}/{id}", this);
-        controller.registerHandler(GET,  "/{operation}/{id}/_flavor2", this);
     }
 
 
@@ -46,11 +45,11 @@ public class FlavorRestAction extends BaseRestHandler {
                     try {
                         final String jsonString = XContentHelper.convertToJson(request.content(), true);
                         JsonObject json = new Gson().fromJson(jsonString, JsonObject.class);
+                        final long startTime = System.currentTimeMillis();
 
-                        ElasticsearchPreloadDataModelFactory factory = new ElasticsearchPreloadDataModelFactory(client, json);
+                        ElasticsearchPreloadDataModelFactory factory = new ElasticsearchPreloadDataModelFactory(client, json,channel,this,request,startTime);
                         this.dataModelFactory = factory;
-                        final DataModel preload = factory.createItemBasedDataModel(null, null, 0);
-                        renderStatus(channel, preload);
+                        factory.createItemBasedDataModel(null, null, 0,"preload");
 
                     } catch (final Exception e) {
                         handleErrorRequest(channel, e);
@@ -73,43 +72,19 @@ public class FlavorRestAction extends BaseRestHandler {
                                 .neighborhoodNearestN(request.paramAsInt("neighborhoodN", 10))
                                 .neighborhoodThreshold((double) request.paramAsFloat("neighborhoodThreshold", 0.1F));
 
+                        if(dataModelFactory == null){
+                            ElasticsearchDynamicDataModelFactory factory = new ElasticsearchDynamicDataModelFactory(client,channel,this,request,startTime);
+                            this.dataModelFactory = factory;
+                        }
+
                         if (operation.equals("similar_items")) {
-                            DataModel dataModel = dataModelFactory.createItemBasedDataModel(index, type, id);
-                            ItemBasedRecommender recommender = builder
-                                    .dataModel(dataModel)
-                                    .itemBasedRecommender();
-
-                            List<RecommendedItem> items = recommender.mostSimilarItems(id, size);
-                            renderRecommendedItems(channel, items, startTime);
-
+                            dataModelFactory.createItemBasedDataModel(index, type, id,operation);
                         } else if (operation.equals("similar_users")) {
-                            DataModel dataModel = dataModelFactory.createUserBasedDataModel(index, type, id);
-                            UserBasedRecommender recommender = builder
-                                    .dataModel(dataModel)
-                                    .userBasedRecommender();
-
-                            long[] userIds = recommender.mostSimilarUserIDs(id, size);
-                            renderUserIds(channel, userIds, startTime);
-
+                            dataModelFactory.createUserBasedDataModel(index, type, id,operation);
                         } else if (operation.equals("user_based_recommend")) {
-                            DataModel dataModel = dataModelFactory.createUserBasedDataModel(index, type, id);
-                            UserBasedRecommender recommender = builder
-                                    .dataModel(dataModel)
-                                    .userBasedRecommender();
-
-                            List<RecommendedItem> items = recommender.recommend(id, size);
-                            renderRecommendedItems(channel, items, startTime);
-
-
+                            dataModelFactory.createUserBasedDataModel(index, type, id,operation);
                         } else if (operation.equals("item_based_recommend")) {
-                            DataModel dataModel = dataModelFactory.createUserBasedDataModel(index, type, id);
-                            ItemBasedRecommender recommender = builder
-                                    .dataModel(dataModel)
-                                    .itemBasedRecommender();
-
-                            List<RecommendedItem> items = recommender.recommend(id, size);
-                            renderRecommendedItems(channel, items, startTime);
-
+                            dataModelFactory.createUserBasedDataModel(index, type, id,operation);
                         } else {
                             renderNotFound(channel, "Invalid operation: " + operation);
                         }
@@ -197,7 +172,7 @@ public class FlavorRestAction extends BaseRestHandler {
         }
     }
 
-    private void renderStatus(final RestChannel channel, final DataModel dataModel) {
+    protected void renderStatus(final RestChannel channel, final DataModel dataModel) {
         try {
             final XContentBuilder builder = JsonXContent.contentBuilder();
             builder
@@ -244,5 +219,60 @@ public class FlavorRestAction extends BaseRestHandler {
     @Override
     protected Set<String> responseParams() {
         return RESPONSE_PARAMS;
+    }
+
+    protected void similar_items(DataModel dataModelFromUserIds, RestRequest request, RestChannel channel, long startTime) throws TasteException {
+
+        final String operation = request.param("operation");
+        final String index = request.param("index");
+        final String type = request.param("type");
+        final long id = request.paramAsLong("id", 0);
+        final int size = request.paramAsInt("size", 10);
+
+        final RecommenderBuilder builder = RecommenderBuilder
+                .builder()
+                .similarity(request.param("similarity"))
+                .neighborhood(request.param("neighborhood"))
+                .neighborhoodNearestN(request.paramAsInt("neighborhoodN", 10))
+                .neighborhoodThreshold((double) request.paramAsFloat("neighborhoodThreshold", 0.1F));
+
+
+        if (operation.equals("similar_items")) {
+
+            ItemBasedRecommender recommender = builder
+                    .dataModel(dataModelFromUserIds)
+                    .itemBasedRecommender();
+
+            List<RecommendedItem> items = recommender.mostSimilarItems(id, size);
+            renderRecommendedItems(channel, items, startTime);
+
+        } else if (operation.equals("similar_users")) {
+            UserBasedRecommender recommender = builder
+                    .dataModel(dataModelFromUserIds)
+                    .userBasedRecommender();
+
+            long[] userIds = recommender.mostSimilarUserIDs(id, size);
+            renderUserIds(channel, userIds, startTime);
+
+        } else if (operation.equals("user_based_recommend")) {
+            UserBasedRecommender recommender = builder
+                    .dataModel(dataModelFromUserIds)
+                    .userBasedRecommender();
+
+            List<RecommendedItem> items = recommender.recommend(id, size);
+            renderRecommendedItems(channel, items, startTime);
+
+
+        } else if (operation.equals("item_based_recommend")) {
+            ItemBasedRecommender recommender = builder
+                    .dataModel(dataModelFromUserIds)
+                    .itemBasedRecommender();
+
+            List<RecommendedItem> items = recommender.recommend(id, size);
+            renderRecommendedItems(channel, items, startTime);
+
+        } else {
+            renderNotFound(channel, "Invalid operation: " + operation);
+        }
     }
 }

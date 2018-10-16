@@ -1,11 +1,22 @@
 package org.elasticsearch.plugin.flavor;
 
 
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.admin.cluster.node.info.NodesInfoRequest;
+import org.elasticsearch.action.admin.cluster.node.info.NodesInfoResponse;
+import org.elasticsearch.action.admin.cluster.state.ClusterStateResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.document.DocumentField;
 import org.elasticsearch.common.unit.TimeValue;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.rest.RestChannel;
+import org.elasticsearch.rest.RestRequest;
+import org.elasticsearch.rest.RestResponse;
+import org.elasticsearch.rest.action.RestActionListener;
+import org.elasticsearch.rest.action.RestResponseListener;
+import org.elasticsearch.rest.action.cat.RestPluginsAction;
+import org.elasticsearch.rest.action.cat.RestTable;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.action.search.SearchResponse;
@@ -24,140 +35,177 @@ import org.elasticsearch.plugin.flavor.DataModelFactory;
 import org.elasticsearch.search.sort.SortOrder;
 
 public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
+    private final FlavorRestAction action;
+    private final RestRequest request;
+    private final long startTime;
+    private final RestChannel ch;
     private Logger logger = Loggers.getLogger(ElasticsearchDynamicDataModelFactory.class);
-    private Client client;
+    private final Client client;
 
     private int scrollSize = 2000;
     private long keepAlive = 10000;
 
-    public ElasticsearchDynamicDataModelFactory(final Client client) {
+    public ElasticsearchDynamicDataModelFactory(final Client client, final RestChannel ch, final FlavorRestAction action, final RestRequest request, final long time) {
         this.client = client;
+        this.ch = ch;
+        this.action = action;
+        this.request = request;
+        this.startTime = time;
     }
 
-    public DataModel createItemBasedDataModel(final String index,
-                                              final String type,
-                                              final long itemId) throws TasteException {
-        SearchResponse userIdsResponse = client
-            .prepareSearch(index)
-            .setTypes(type)
-            .addSort("_doc", SortOrder.ASC)
-            .setScroll(new TimeValue(keepAlive))
-            .setPostFilter(QueryBuilders.termQuery("item_id", itemId))
-            .setFetchSource(new String[]{"user_id"},null)
-            .setSize(scrollSize)
-            .execute()
-            .actionGet();
-
-        final long numUsers = userIdsResponse.getHits().getTotalHits();
-        FastIDSet userIds = new FastIDSet((int)numUsers);
-        while (true) {
-            for (SearchHit hit : userIdsResponse.getHits().getHits()) {
-                final long userId = getLongValue(hit, "user_id");
-                userIds.add(userId);
-            }
-            //Break condition: No hits are returned
-            userIdsResponse = client
-                .prepareSearchScroll(userIdsResponse.getScrollId())
-                .setScroll(new TimeValue(keepAlive))
-                .execute()
-                .actionGet();
-            if (userIdsResponse.getHits().getHits().length == 0) {
-                break;
-            }
-        }
-        return createDataModelFromUserIds(index, type, userIds);
-    }
-
-    public DataModel createUserBasedDataModel(final String index,
-                                              final String type,
-                                              final long targetUserId) throws TasteException {
-        SearchResponse itemIdsResponse = client
-            .prepareSearch(index)
-            .setTypes(type)
-            .addSort("_doc", SortOrder.ASC)
-            .setScroll(new TimeValue(keepAlive))
-            .setPostFilter(QueryBuilders.termQuery("user_id", targetUserId))
-            .setFetchSource(new String[]{"item_id"},null)
-            .setSize(scrollSize)
-            .execute()
-            .actionGet();
-        final long numItems = itemIdsResponse.getHits().getTotalHits();
-        if (numItems <= 0) {
-            throw new NoSuchItemException("No such user_id:" + targetUserId);
-        }
-
-        FastIDSet itemIds = new FastIDSet((int)numItems);
-        while (true) {
-            for (SearchHit hit : itemIdsResponse.getHits().getHits()) {
-                final long itemId = getLongValue(hit, "item_id");
-                itemIds.add(itemId);
-            }
-            //Break condition: No hits are returned
-            itemIdsResponse = client
-                .prepareSearchScroll(itemIdsResponse.getScrollId())
-                .setScroll(new TimeValue(keepAlive))
-                .execute()
-                .actionGet();
-            if (itemIdsResponse.getHits().getHits().length == 0) {
-                break;
-            }
-        }
-
-        SearchResponse userIdsResponse = client
-            .prepareSearch(index)
-            .setTypes(type)
-            .addSort("_doc", SortOrder.ASC)
-            .setScroll(new TimeValue(keepAlive))
-            .setPostFilter(QueryBuilders.termsQuery("item_id", itemIds.toArray()))
-            .setFetchSource(new String[]{"user_id"},null)
-            .setSize(scrollSize)
-            .execute()
-            .actionGet();
-        final long numUsers = userIdsResponse.getHits().getTotalHits();
-        FastIDSet userIds = new FastIDSet((int)numUsers);
-        while (true) {
-            for (SearchHit hit : userIdsResponse.getHits().getHits()) {
-                final long userId = getLongValue(hit, "user_id");
-                userIds.add(userId);
-            }
-            //Break condition: No hits are returned
-            userIdsResponse = client
-                .prepareSearchScroll(userIdsResponse.getScrollId())
-                .setScroll(new TimeValue(keepAlive))
-                .execute()
-                .actionGet();
-            if (userIdsResponse.getHits().getHits().length == 0) {
-                break;
-            }
-        }
-        // logger.info("itemIds: {}, userIds: {}", itemIds, userIds);
-        return createDataModelFromUserIds(index, type, userIds);
-    }
-
-    public DataModel createDataModelFromUserIds(final String index,
-                                                final String type,
-                                                final FastIDSet userIds) {
-        SearchResponse scroll = client
-            .prepareSearch(index)
-            .setTypes(type)
+    public void createItemBasedDataModel(final String index,
+                                         final String type,
+                                         final long itemId,
+                                         final String operation) throws TasteException {
+        client
+                .prepareSearch(index)
+                .setTypes(type)
                 .addSort("_doc", SortOrder.ASC)
-            .setPostFilter(QueryBuilders.termsQuery("user_id", userIds.toArray()))
-            .setFetchSource(new String[]{"user_id", "item_id", "value"},null)
-            .setSize(scrollSize)
-            .setScroll(new TimeValue(keepAlive))
-            .execute()
-            .actionGet();
+                .setScroll(new TimeValue(keepAlive))
+                .setPostFilter(QueryBuilders.termQuery("item_id", itemId))
+                .setFetchSource(new String[]{"user_id"}, null)
+                .setSize(scrollSize)
+                .execute(new RestActionListener<SearchResponse>(ch) {
+                    public void processResponse(SearchResponse userIdsResponse) throws Exception {
 
-        final long total = scroll.getHits().getTotalHits();
-        FastByIDMap<PreferenceArray> users = new FastByIDMap<PreferenceArray>((int)total);
+                        final long numUsers = userIdsResponse.getHits().getTotalHits();
+                        FastIDSet userIds = new FastIDSet((int) numUsers);
+                        loop2(userIdsResponse, userIds);
+                        client
+                                .prepareSearch(index)
+                                .setTypes(type)
+                                .addSort("_doc", SortOrder.ASC)
+                                .setPostFilter(QueryBuilders.termsQuery("user_id", userIds.toArray()))
+                                .setFetchSource(new String[]{"user_id", "item_id", "value"}, null)
+                                .setSize(scrollSize)
+                                .setScroll(new TimeValue(keepAlive))
+                                .execute(new RestActionListener<SearchResponse>(ch) {
+                                    public void processResponse(SearchResponse scroll) throws Exception {
+
+                                        final long total = scroll.getHits().getTotalHits();
+                                        FastByIDMap<PreferenceArray> users = new FastByIDMap<PreferenceArray>((int) total);
+                                        loop(scroll, users);
+                                        switch (operation) {
+                                            case "preload":
+                                                action.renderStatus(channel, new GenericDataModel(users));
+                                                break;
+                                            case "similar_items":
+                                                action.similar_items(new GenericDataModel(users), request, ch, startTime);
+                                                break;
+                                        }
+                                    }
+                                });
+
+                    }
+                });
+    }
+
+    public void createUserBasedDataModel(final String index,
+                                         final String type,
+                                         final long targetUserId,
+                                         final String operation) throws TasteException {
+        client
+                .prepareSearch(index)
+                .setTypes(type)
+                .addSort("_doc", SortOrder.ASC)
+                .setScroll(new TimeValue(keepAlive))
+                .setPostFilter(QueryBuilders.termQuery("user_id", targetUserId))
+                .setFetchSource(new String[]{"item_id"}, null)
+                .setSize(scrollSize)
+                .execute(new RestActionListener<SearchResponse>(ch) {
+                    public void processResponse(SearchResponse itemIdsResponse) throws Exception {
+
+                        final long numItems = itemIdsResponse.getHits().getTotalHits();
+                        if (numItems <= 0) {
+                            throw new NoSuchItemException("No such user_id:" + targetUserId);
+                        }
+
+                        FastIDSet itemIds = new FastIDSet((int) numItems);
+                        while (true) {
+                            for (SearchHit hit : itemIdsResponse.getHits().getHits()) {
+                                final long itemId = getLongValue(hit, "item_id");
+                                itemIds.add(itemId);
+                            }
+                            //Break condition: No hits are returned
+                            itemIdsResponse = client
+                                    .prepareSearchScroll(itemIdsResponse.getScrollId())
+                                    .setScroll(new TimeValue(keepAlive))
+                                    .execute()
+                                    .actionGet();
+                            if (itemIdsResponse.getHits().getHits().length == 0) {
+                                break;
+                            }
+                        }
+
+                        SearchResponse userIdsResponse = client
+                                .prepareSearch(index)
+                                .setTypes(type)
+                                .addSort("_doc", SortOrder.ASC)
+                                .setScroll(new TimeValue(keepAlive))
+                                .setPostFilter(QueryBuilders.termsQuery("item_id", itemIds.toArray()))
+                                .setFetchSource(new String[]{"user_id"}, null)
+                                .setSize(scrollSize)
+                                .execute()
+                                .actionGet();
+                        final long numUsers = userIdsResponse.getHits().getTotalHits();
+                        FastIDSet userIds = new FastIDSet((int) numUsers);
+                        loop2(userIdsResponse, userIds);
+                        // logger.info("itemIds: {}, userIds: {}", itemIds, userIds);
+
+                        client
+                                .prepareSearch(index)
+                                .setTypes(type)
+                                .addSort("_doc", SortOrder.ASC)
+                                .setPostFilter(QueryBuilders.termsQuery("user_id", userIds.toArray()))
+                                .setFetchSource(new String[]{"user_id", "item_id", "value"}, null)
+                                .setSize(scrollSize)
+                                .setScroll(new TimeValue(keepAlive))
+                                .execute(new RestActionListener<SearchResponse>(ch) {
+                                    public void processResponse(SearchResponse scroll) throws Exception {
+
+                                        final long total = scroll.getHits().getTotalHits();
+                                        FastByIDMap<PreferenceArray> users = new FastByIDMap<PreferenceArray>((int) total);
+                                        loop(scroll, users);
+                                        switch (operation) {
+                                            case "similar_users":
+                                            case "user_based_recommend":
+                                            case "item_based_recommend":
+                                                action.similar_items(new GenericDataModel(users), request, ch, startTime);
+                                                break;
+                                        }
+                                    }
+                                });
+                    }
+                });
+    }
+
+    private void loop2(SearchResponse userIdsResponse, FastIDSet userIds) {
+        while (true) {
+            for (SearchHit hit : userIdsResponse.getHits().getHits()) {
+                final long userId = getLongValue(hit, "user_id");
+                userIds.add(userId);
+            }
+            //Break condition: No hits are returned
+            userIdsResponse = client
+                    .prepareSearchScroll(userIdsResponse.getScrollId())
+                    .setScroll(new TimeValue(keepAlive))
+                    .execute()
+                    .actionGet();
+            if (userIdsResponse.getHits().getHits().length == 0) {
+                break;
+            }
+        }
+    }
+
+    private void loop(SearchResponse scroll, FastByIDMap<PreferenceArray> users) {
         while (true) {
             for (SearchHit hit : scroll.getHits().getHits()) {
-                final long  userId = getLongValue(hit, "user_id");
-                final long  itemId = getLongValue(hit, "item_id");
-                final float value  = getFloatValue(hit, "value");
+                final long userId = getLongValue(hit, "user_id");
+                final long itemId = getLongValue(hit, "item_id");
+                final float value = getFloatValue(hit, "value");
 
                 if (users.containsKey(userId)) {
-                    GenericUserPreferenceArray user = (GenericUserPreferenceArray)users.get(userId);
+                    GenericUserPreferenceArray user = (GenericUserPreferenceArray) users.get(userId);
                     GenericUserPreferenceArray newUser = new GenericUserPreferenceArray(user.length() + 1);
                     int currentLength = user.length();
                     for (int i = 0; i < currentLength; i++) {
@@ -169,7 +217,7 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
                     newUser.setItemID(currentLength, itemId);
                     newUser.setValue(currentLength, value);
                     users.put(userId, newUser);
-                    
+
                 } else {
                     GenericUserPreferenceArray user = new GenericUserPreferenceArray(1);
                     user.setUserID(0, userId);
@@ -180,15 +228,14 @@ public class ElasticsearchDynamicDataModelFactory implements DataModelFactory {
             }
             //Break condition: No hits are returned
             scroll = client
-                .prepareSearchScroll(scroll.getScrollId())
-                .setScroll(new TimeValue(keepAlive))
-                .execute()
-                .actionGet();
+                    .prepareSearchScroll(scroll.getScrollId())
+                    .setScroll(new TimeValue(keepAlive))
+                    .execute()
+                    .actionGet();
             if (scroll.getHits().getHits().length == 0) {
                 break;
             }
         }
-        return new GenericDataModel(users);
     }
 
     private long getLongValue(final SearchHit hit, final String field) {
