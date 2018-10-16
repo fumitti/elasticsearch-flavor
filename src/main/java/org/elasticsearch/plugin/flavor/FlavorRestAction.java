@@ -17,7 +17,7 @@ import org.elasticsearch.common.xcontent.json.JsonXContent;
 import org.elasticsearch.rest.*;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.*;
 
 import static org.elasticsearch.rest.RestRequest.Method.GET;
 import static org.elasticsearch.rest.RestRequest.Method.POST;
@@ -32,8 +32,11 @@ public class FlavorRestAction extends BaseRestHandler {
         super(settings);
         controller.registerHandler(POST, "/_flavor/preload", this);
         controller.registerHandler(GET,  "/{index}/{type}/_flavor/{operation}/{id}", this);
+        controller.registerHandler(GET,  "/{index}/{type}/_flavor", this);
         controller.registerHandler(GET,  "/_flavor/{operation}/{id}", this);
+        controller.registerHandler(GET,  "/{operation}/{id}/_flavor2", this);
     }
+
 
     @Override
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
@@ -222,4 +225,24 @@ public class FlavorRestAction extends BaseRestHandler {
         return "flavor";
     }
 
+    private static final Set<String> RESPONSE_PARAMS;
+
+    static {
+        final Set<String> responseParams = new HashSet<>();
+        responseParams.add("operation");
+        responseParams.add("index");
+        responseParams.add("type");
+        responseParams.add("id");
+        responseParams.add("size");
+        responseParams.add("similarity");
+        responseParams.add("neighborhood");
+        responseParams.add("neighborhoodN");
+        responseParams.add("neighborhoodThreshold");
+        RESPONSE_PARAMS = Collections.unmodifiableSet(responseParams);
+    }
+
+    @Override
+    protected Set<String> responseParams() {
+        return RESPONSE_PARAMS;
+    }
 }
