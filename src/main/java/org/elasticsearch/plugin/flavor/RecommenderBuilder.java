@@ -1,6 +1,6 @@
 package org.elasticsearch.plugin.flavor;
 
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 
 import org.apache.mahout.cf.taste.common.TasteException;
@@ -21,7 +21,7 @@ import org.apache.mahout.cf.taste.impl.recommender.GenericUserBasedRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender;
 
 public class RecommenderBuilder {
-    private ESLogger logger = Loggers.getLogger(FlavorRestAction.class);
+    private Logger logger = Loggers.getLogger(FlavorRestAction.class);
     private String similarityName   = "PearsonCorrelationSimilarity";
     private String neighborhoodName = "NearestNUserNeighborhood";
     private int neighborhoodNearestN = 10;

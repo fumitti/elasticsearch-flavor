@@ -1,36 +1,31 @@
 package org.elasticsearch.plugin.flavor;
 
-import java.util.ArrayList;
-import java.util.Collection;
-
-import org.elasticsearch.client.Client;
-import org.elasticsearch.common.unit.TimeValue;
-import org.elasticsearch.common.logging.ESLogger;
-import org.elasticsearch.common.logging.Loggers;
-import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.SearchHitField;
-import org.elasticsearch.search.SearchHits;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.action.search.SearchType;
-import org.elasticsearch.action.search.SearchResponse;
-
+import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.Refreshable;
 import org.apache.mahout.cf.taste.common.TasteException;
-import org.apache.mahout.cf.taste.impl.model.AbstractDataModel;
-import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
 import org.apache.mahout.cf.taste.impl.common.FastIDSet;
 import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.model.AbstractDataModel;
 import org.apache.mahout.cf.taste.impl.model.GenericDataModel;
-import org.apache.mahout.cf.taste.impl.model.GenericPreference;
 import org.apache.mahout.cf.taste.impl.model.GenericUserPreferenceArray;
-import org.apache.mahout.cf.taste.model.DataModel;
-import org.apache.mahout.cf.taste.model.Preference;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.search.SearchType;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.common.document.DocumentField;
+import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.rest.action.RestActionListener;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.sort.SortOrder;
+
+import java.util.Collection;
 
 public class ElasticsearchPreloadDataModel extends AbstractDataModel {
-    private ESLogger logger = Loggers.getLogger(ElasticsearchPreloadDataModel.class);
+    private Logger logger = Loggers.getLogger(ElasticsearchPreloadDataModel.class);
     private Client client;
     private String preferenceIndex;
     private String preferenceType;
@@ -49,67 +44,81 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
 
     public void reload() throws TasteException {
         FastByIDMap<PreferenceArray> users = new FastByIDMap<PreferenceArray>();
-        SearchResponse scroll = client
+        ElasticsearchPreloadDataModel t = this;
+        client
             .prepareSearch(preferenceIndex)
             .setTypes(preferenceType)
-            .setSearchType(SearchType.SCAN)
+            .addSort("_doc", SortOrder.ASC)
+            .setFetchSource(new String[]{"user_id", "item_id", "value"},null)
             .setQuery(QueryBuilders.matchAllQuery())
-            .addFields("user_id", "item_id", "value")
             .setSize(scrollSize)
             .setScroll(new TimeValue(keepAlive))
-            .execute()
-            .actionGet();
+                .execute(new ActionListener<SearchResponse>() {
+                    public void onResponse(SearchResponse scroll) {
 
-        while (true) {
-            for (SearchHit hit : scroll.getHits().getHits()) {
-                final long  userId = getLongValue(hit, "user_id");
-                final long  itemId = getLongValue(hit, "item_id");
-                final float value  = getFloatValue(hit, "value");
+                        try {
+                        while (true) {
+                            for (SearchHit hit : scroll.getHits().getHits()) {
+                                final long userId= getLongValue(hit, "user_id");
+                                final long itemId = getLongValue(hit, "item_id");
+                                final float value = getFloatValue(hit, "value");
 
-                if (users.containsKey(userId)) {
-                    GenericUserPreferenceArray user = (GenericUserPreferenceArray)users.get(userId);
-                    GenericUserPreferenceArray newUser = new GenericUserPreferenceArray(user.length() + 1);
-                    int currentLength = user.length();
-                    for (int i = 0; i < currentLength; i++) {
-                        newUser.setUserID(i, user.getUserID(i));
-                        newUser.setItemID(i, user.getItemID(i));
-                        newUser.setValue(i, user.getValue(i));
+                                if (users.containsKey(userId)) {
+                                    GenericUserPreferenceArray user = (GenericUserPreferenceArray) users.get(userId);
+                                    GenericUserPreferenceArray newUser = new GenericUserPreferenceArray(user.length() + 1);
+                                    int currentLength = user.length();
+                                    for (int i = 0; i < currentLength; i++) {
+                                        newUser.setUserID(i, user.getUserID(i));
+                                        newUser.setItemID(i, user.getItemID(i));
+                                        newUser.setValue(i, user.getValue(i));
+                                    }
+                                    newUser.setUserID(currentLength, userId);
+                                    newUser.setItemID(currentLength, itemId);
+                                    newUser.setValue(currentLength, value);
+                                    users.put(userId, newUser);
+
+                                } else {
+                                    GenericUserPreferenceArray user = new GenericUserPreferenceArray(1);
+                                    user.setUserID(0, userId);
+                                    user.setItemID(0, itemId);
+                                    user.setValue(0, value);
+                                    users.put(userId, user);
+                                }
+                            }
+                            //Break condition: No hits are returned
+                            scroll = client
+                                    .prepareSearchScroll(scroll.getScrollId())
+                                    .setScroll(new TimeValue(keepAlive))
+                                    .execute()
+                                    .actionGet();
+                            if (scroll.getHits().getHits().length == 0) {
+                                break;
+                            }
+                        }
+
+                        t.delegate = new GenericDataModel(users);
+                        // LongPrimitiveIterator iter = delegate.getUserIDs();
+                        // while (iter.hasNext()) {
+                        //     long userId = iter.nextLong();
+                        //     PreferenceArray user = delegate.getPreferencesFromUser(userId);
+                        //     logger.info("userId: {} ({})", userId, user.getIDs());
+                        // }
+
+                        logger.info("Reload {}/{} {} users. {} items.",
+                                preferenceIndex, preferenceType,
+                                delegate.getNumUsers(), delegate.getNumItems());
+
+                        } catch (TasteException e) {
+                            e.printStackTrace();
+                        }
                     }
-                    newUser.setUserID(currentLength, userId);
-                    newUser.setItemID(currentLength, itemId);
-                    newUser.setValue(currentLength, value);
-                    users.put(userId, newUser);
-                    
-                } else {
-                    GenericUserPreferenceArray user = new GenericUserPreferenceArray(1);
-                    user.setUserID(0, userId);
-                    user.setItemID(0, itemId);
-                    user.setValue(0, value);
-                    users.put(userId, user);
-                }
-            }
-            //Break condition: No hits are returned
-            scroll = client
-                .prepareSearchScroll(scroll.getScrollId())
-                .setScroll(new TimeValue(keepAlive))
-                .execute()
-                .actionGet();
-            if (scroll.getHits().getHits().length == 0) {
-                break;
-            }
-        }
 
-        this.delegate = new GenericDataModel((FastByIDMap<PreferenceArray>)users);
-        // LongPrimitiveIterator iter = delegate.getUserIDs();
-        // while (iter.hasNext()) {
-        //     long userId = iter.nextLong();
-        //     PreferenceArray user = delegate.getPreferencesFromUser(userId);
-        //     logger.info("userId: {} ({})", userId, user.getIDs());
-        // }
+                    @Override
+                    public void onFailure(Exception e) {
+                        e.printStackTrace();
+                    }
 
-        logger.info("Reload {}/{} {} users. {} items.",
-                    preferenceIndex, preferenceType,
-                    delegate.getNumUsers(), delegate.getNumItems());
+                });
     }
 
     public Client client() {
@@ -149,11 +158,13 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     private long getLongValue(final SearchHit hit, final String field) throws TasteException {
-        final SearchHitField result = hit.field(field);
+        final Object result = hit.getSourceAsMap().get(field);
         if (result == null) {
             throw new TasteException(field + " is not found.");
         }
-        final Number longValue = result.getValue();
+        if (! (result instanceof Number))
+            throw new TasteException(field + " is not Number.");
+        final Number longValue = (Number) result;
         if (longValue == null) {
             throw new TasteException("The result of " + field + " is null.");
         }
@@ -161,11 +172,13 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     private float getFloatValue(final SearchHit hit, final String field) throws TasteException {
-        final SearchHitField result = hit.field(field);
+        final Object result = hit.getSourceAsMap().get(field);
         if (result == null) {
             throw new TasteException(field + " is not found.");
         }
-        final Number floatValue = result.getValue();
+        if (! (result instanceof Number))
+            throw new TasteException(field + " is not Number.");
+        final Number floatValue = (Number) result;
         if (floatValue == null) {
             throw new TasteException("The result of " + field + " is null.");
         }
@@ -230,7 +243,7 @@ public class ElasticsearchPreloadDataModel extends AbstractDataModel {
     }
 
     /**
-     * Note that this method only updates the in-memory preference data that this {@link FileDataModel}
+     * Note that this method only updates the in-memory preference data that this
      * maintains; it does not modify any data on disk. Therefore any updates from this method are only
      * temporary, and lost when data is reloaded from a file. This method should also be considered relatively
      * slow.

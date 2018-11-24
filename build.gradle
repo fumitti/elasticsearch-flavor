@@ -1,0 +1,72 @@
+task wrapper(type: Wrapper) {
+    gradleVersion = '4.9'
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+        maven {
+            name 'sonatype-snapshots'
+            url "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+        jcenter()
+    }
+    dependencies {
+        classpath "org.elasticsearch.gradle:build-tools:6.4.1"
+    }
+}
+group = 'org.elasticsearch.plugin'
+version = '0.0.11'
+
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'elasticsearch.esplugin'
+
+// license of this project
+licenseFile = rootProject.file('LICENSE.txt')
+// copyright notices
+noticeFile = rootProject.file('NOTICE.txt')
+
+esplugin {
+    name 'elasticsearch-flavor'
+    description 'Apache Mahout base Recommendation engine. Use elasticsearch to storage and REST interface.'
+    classname 'org.elasticsearch.plugin.flavor.FlavorPlugin'
+}
+dependencies {
+    compile 'org.elasticsearch:elasticsearch:6.4.1'
+    compile group: 'org.apache.mahout', name: 'mahout', version: '0.9', ext: 'pom'
+    compile "org.apache.mahout:mahout-core:0.9"
+    compile "com.google.code.gson:gson:2.3.1"
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.5'
+    compile group: 'org.apache.mahout', name: 'mahout-math', version: '0.9'
+    compile group: 'com.google.guava', name: 'guava', version: '16.0'
+    compile group: 'org.apache.commons', name: 'commons-math3', version: '3.2'
+    testCompile group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.5'
+    testCompile 'org.elasticsearch.test:framework:6.4.1'
+    testCompile 'org.codelibs:elasticsearch-cluster-runner:6.4.1.0'
+    testCompile 'args4j:args4j:2.33'
+}
+
+// Set to false to not use elasticsearch checkstyle rules
+checkstyleMain.enabled = false
+checkstyleTest.enabled = false
+
+// No unit tests
+test.enabled = false
+
+integTest.enabled = false
+
+// FIXME forbiddenApisMain check needs to be enabled
+forbiddenApisMain.enabled = false
+forbiddenApisTest.enabled = false
+// FIXME loggerUsageCheck check needs to be enabled
+loggerUsageCheck.enabled = false
+
+// FIXME dependency license check needs to be enabled
+dependencyLicenses.enabled = false
+
+// FIXME thirdparty audit needs to be enabled
+thirdPartyAudit.enabled = false
+
+// Uncomment this to skip license header checks
+licenseHeaders.enabled = false
